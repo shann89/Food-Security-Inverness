@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inverness County, NS - Food System Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        #canvasContainer {
+            position: relative;
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            background-color: transparent;
+        }
+        #backgroundCanvas {
+            background-color: #a7d8f0; /* Water color */
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            z-index: 0;
+        }
+        #heatmapCanvas { z-index: 1; opacity: 0.6; }
+        #simulationCanvas { z-index: 2; }
+        .control-panel {
+            background-color: #ffffff;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        .btn {
+            transition: all 0.2s ease-in-out;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .btn:active {
+            transform: translateY(0);
+        }
+        .legend {
+            padding: 1rem;
+            background-color: #f9fafb;
+            border-radius: 0.5rem;
+            border: 1px solid #e5e7eb;
+        }
+        #householdModal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 0.5rem;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+    <div class="w-full max-w-7xl mx-auto">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Inverness County, NS - Food System Simulator</h1>
+        <p class="text-center text-gray-500 mb-6">Now Including Seasonal Economy & Policy Scenarios</p>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Simulation Canvas -->
+            <div class="lg:col-span-2">
+                <div id="canvasContainer" class="w-full aspect-[4/3] relative">
+                    <canvas id="backgroundCanvas"></canvas>
+                    <canvas id="heatmapCanvas"></canvas>
+                    <canvas id="simulationCanvas"></canvas>
+                </div>
+                 <div class="legend mt-4">
+                    <h3 class="font-semibold text-lg mb-2">Legend</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2 text-sm">
+                        <div class="flex items-center"><div class="w-4 h-4 rounded-full mr-2" style="background-color: #22c55e;"></div>Food Secure</div>
+                        <div class="flex items-center"><div class="w-4 h-4 rounded-full mr-2" style="background-color: #facc15;"></div>Food Insecure</div>
+                        <div class="flex items-center"><div class="w-4 h-4 rounded-full mr-2" style="background-color: #ef4444;"></div>Severely Insecure</div>
+                        <div class="flex items-center"><div class="w-4 h-4 rounded-full mr-2" style="background-color: #4b5563;"></div>Cannot Afford</div>
+                        <div class="flex items-center"><div class="w-5 h-5 rounded-sm mr-2" style="background-color: #3b82f6;"></div>Grocery Store</div>
+                        <div class="flex items-center"><div class="w-4 h-4 rounded-sm mr-2" style="background-color: #a855f7;"></div>Convenience Store</div>
+                        <div class="flex items-center"><div class="w-4 h-4 rounded-sm mr-2" style="background-color: #16a34a;"></div>Farmers' Market</div>
+                        <div class="flex items-center"><div class="w-4 h-4 rounded-sm mr-2" style="background-color: #f97316;"></div>Food Bank</div>
+                        <div class="flex items-center"><svg class="w-4 h-4 mr-2" viewBox="0 0 100 100"><polygon points="50,10 90,90 10,90" fill="#6b7280"/></svg>Vulnerable HH</div>
+                    </div>
+                </div>
+            </div>
+            <!-- Control Panel -->
+            <div class="control-panel">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">Simulation Controls</h2>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                         <h3 class="text-lg font-medium text-gray-700">Year: <span id="yearCounter">1</span> Day: <span id="dayCounter">0</span></h3>
+                         <div class="flex space-x-2">
+                            <button id="startBtn" class="btn bg-green-500 text-white font-bold py-2 px-4 rounded-lg">Start</button>
+                            <button id="pauseBtn" class="btn bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg">Pause</button>
+                            <button id="resetBtn" class="btn bg-red-500 text-white font-bold py-2 px-4 rounded-lg">Reset</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                         <div class="flex items-center">
+                            <input type="checkbox" id="heatmapToggle" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                            <label for="heatmapToggle" class="ml-2 block text-sm text-gray-900">Show Heatmap</label>
+                        </div>
+                        <div id="seasonDisplay" class="text-sm font-medium text-gray-700"></div>
+                    </div>
+
+                    <!-- Policy Scenarios -->
+                    <div class="pt-4 border-t">
+                        <h3 class="text-lg font-medium text-gray-700 mb-2">Policy Scenarios</h3>
+                        <div class="space-y-2">
+                            <button id="ubiBtn" class="btn bg-blue-500 text-white font-bold py-2 px-4 rounded-lg w-full">Scenario 1: UBI ($500/yr)</button>
+                            <button id="addFoodBankBtn" class="btn bg-orange-500 text-white font-bold py-2 px-4 rounded-lg w-full">Scenario 2: Add Food Bank</button>
+                            <button id="transportBtn" class="btn bg-purple-500 text-white font-bold py-2 px-4 rounded-lg w-full">Scenario 3: Add Transport</button>
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t">
+                        <h3 class="text-lg font-medium text-gray-700 mb-2">System Parameters</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label for="speedSlider" class="block text-sm font-medium text-gray-600">Simulation Speed: <span id="speedValue">50</span></label>
+                                <input type="range" id="speedSlider" min="1" max="100" value="50" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                            </div>
+                            <div>
+                                <label for="transportCost" class="block text-sm font-medium text-gray-600">Transport Cost ($/km): <span id="transportCostValue">0.20</span></label>
+                                <input type="range" id="transportCost" min="0.05" max="1.00" step="0.05" value="0.20" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                            </div>
+                            <div>
+                                <label for="seasonalWorkerRate" class="block text-sm font-medium text-gray-600">Seasonal Workers (%): <span id="seasonalWorkerRateValue">40</span></label>
+                                <input type="range" id="seasonalWorkerRate" min="0" max="100" value="40" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                            </div>
+                            <div>
+                                <label for="povertyRate" class="block text-sm font-medium text-gray-600">Poverty Rate (%): <span id="povertyRateValue">18</span></label>
+                                <input type="range" id="povertyRate" min="5" max="50" value="18" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                            </div>
+                             <div>
+                                <label for="housingCost" class="block text-sm font-medium text-gray-600">Avg. Housing Cost ($): <span id="housingCostValue">850</span></label>
+                                <input type="range" id="housingCost" min="400" max="2000" value="850" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                            </div>
+                            <div>
+                                <label for="inflationRate" class="block text-sm font-medium text-gray-600">Annual Inflation (%): <span id="inflationRateValue">5</span></label>
+                                <input type="range" id="inflationRate" min="0" max="15" value="5" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                            </div>
+                        </div>
+                    </div>
+                     <div class="pt-4 border-t">
+                        <h3 class="text-lg font-medium text-gray-700 mb-2">Food Insecurity Stats (% of Residents)</h3>
+                        <div id="statsContainer" class="space-y-2 text-sm"></div>
+                        <p class="text-xs text-gray-500 mt-2">Grocery Cost: $<span id="groceryCostDisplay">50.00</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Household Info Modal -->
+    <div id="householdModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2 class="text-xl font-bold mb-4">Household Details</h2>
+            <div id="modalBody" class="space-y-2"></div>
+        </div>
+    </div>
+    <script>
+        const simCanvas = document.getElementById('simulationCanvas');
+        const simCtx = simCanvas.getContext('2d');
+        const heatmapCanvas = document.getElementById('heatmapCanvas');
+        const heatmapCtx = heatmapCanvas.getContext('2d');
+        const backgroundCanvas = document.getElementById('backgroundCanvas');
+        const backgroundCtx = backgroundCanvas.getContext('2d');
+        const canvasContainer = document.getElementById('canvasContainer');
+
+        function resizeCanvases() {
+            const { width, height } = canvasContainer.getBoundingClientRect();
+            [simCanvas, heatmapCanvas, backgroundCanvas].forEach(canvas => {
+                canvas.width = width;
+                canvas.height = height;
+            });
+            drawBackgroundMap();
+             if (!simulationRunning) {
+                draw();
+            }
+        }
+        window.addEventListener('resize', resizeCanvases);
+
+        // --- Simulation State ---
+        let households = [];
+        let foodSources = [];
+        let roadNetwork = [];
+        let simulationRunning = false;
+        let timeoutId;
+        let simulationDay = 0;
+        let simulationSpeed = 260; // Default delay in ms
+        let heatmapGrid = [];
+        const HEATMAP_RESOLUTION = 20;
+
+        // --- Scenario States ---
+        let ubiActive = false;
+        let transportActive = false;
+        let addedFoodBank = null;
+
+        // --- DOM Elements ---
+        const startBtn = document.getElementById('startBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValue = document.getElementById('speedValue');
+        const transportCostSlider = document.getElementById('transportCost');
+        const transportCostValue = document.getElementById('transportCostValue');
+        const seasonalWorkerRateSlider = document.getElementById('seasonalWorkerRate');
+        const seasonalWorkerRateValue = document.getElementById('seasonalWorkerRateValue');
+        const povertyRateSlider = document.getElementById('povertyRate');
+        const housingCostSlider = document.getElementById('housingCost');
+        const inflationRateSlider = document.getElementById('inflationRate');
+        const povertyRateValue = document.getElementById('povertyRateValue');
+        const housingCostValue = document.getElementById('housingCostValue');
+        const inflationRateValue = document.getElementById('inflationRateValue');
+        const statsContainer = document.getElementById('statsContainer');
+        const dayCounter = document.getElementById('dayCounter');
+        const yearCounter = document.getElementById('yearCounter');
+        const seasonDisplay = document.getElementById('seasonDisplay');
+        const groceryCostDisplay = document.getElementById('groceryCostDisplay');
+        const heatmapToggle = document.getElementById('heatmapToggle');
+        const modal = document.getElementById('householdModal');
+        const modalBody = document.getElementById('modalBody');
+        const closeModal = document.getElementsByClassName("close-button")[0];
+        const ubiBtn = document.getElementById('ubiBtn');
+        const addFoodBankBtn = document.getElementById('addFoodBankBtn');
+        const transportBtn = document.getElementById('transportBtn');
+
+        // --- Parameters ---
+        const params = {
+            areaSize: 62, householdCount: 7800, povertyRate: 0.18, loneParentRate: 0.18,
+            seniorRate: 0.30, disabilityRate: 0.38, unpavedRoadRate: 0.50, seasonalWorkerRate: 0.4,
+            convenienceStoreCount: 15, foodBankCount: 3, averageHousingCost: 850,
+            subsidizedHousingCost: 350, subsidizedHousingRate: 0.1, inflationRate: 0.05, wageGrowth: 0.04,
+            household: { size: 2.2, foodConsumption: 0.5, speed: 1, monthlyIncome: 1800, monthlyLowIncome: 1050, transportCostPerKm: 0.20 },
+            seasonal: { highSeasonIncomeMultiplier: 1.5, offSeasonIncome: 450, touristMarkup: 1.2 },
+            prices: { grocery: 1.2, convenience: 1.6, market: 1.1 },
+            groceryStore: { size: 8, color: '#3b82f6' },
+            convenienceStore: { size: 5, color: '#a855f7', foodValue: 30 },
+            farmersMarket: { size: 7, color: '#16a34a', foodValue: 90 },
+            foodBank: { size: 7, color: '#f97316', foodValue: 50 },
+        };
+
+        // --- Geographic Data ---
+        const geo = {
+            minLat: 45.6, maxLat: 46.9, minLon: -61.7, maxLon: -60.7,
+            locations: {
+                portHastings: { lat: 45.65, lon: -61.40 }, judique: { lat: 45.88, lon: -61.49 },
+                portHood: { lat: 46.01, lon: -61.53 }, mabou: { lat: 46.07, lon: -61.40 },
+                inverness: { lat: 46.23, lon: -61.30 }, margareeForks: { lat: 46.33, lon: -61.10 },
+                cheticamp: { lat: 46.64, lon: -61.00 }, pleasantBay: { lat: 46.82, lon: -60.80 },
+                whycocomagh: { lat: 45.97, lon: -61.12 },
+            }
+        };
+
+        const invernessCountyOutline = [
+            {x:0.43,y:1.00},{x:0.35,y:0.98},{x:0.29,y:0.93},{x:0.26,y:0.86},{x:0.20,y:0.80},{x:0.16,y:0.72},{x:0.15,y:0.65},{x:0.18,y:0.58},{x:0.24,y:0.50},{x:0.30,y:0.42},{x:0.38,y:0.34},{x:0.45,y:0.26},{x:0.53,y:0.18},{x:0.60,y:0.12},{x:0.70,y:0.05},{x:0.80,y:0.01},{x:0.88,y:0.00},{x:0.95,y:0.02},{x:1.00,y:0.10},{x:0.98,y:0.18},{x:0.94,y:0.25},{x:0.88,y:0.35},{x:0.83,y:0.45},{x:0.80,y:0.55},{x:0.81,y:0.65},{x:0.85,y:0.75},{x:0.86,y:0.85},{x:0.82,y:0.95},{x:0.75,y:0.98},{x:0.65,y:0.96},{x:0.55,y:0.98},{x:0.48,y:0.99}
+        ];
+
+        const lakeAinslieOutline = [
+            {x:0.48,y:0.58},{x:0.52,y:0.56},{x:0.55,y:0.57},{x:0.56,y:0.62},{x:0.54,y:0.68},{x:0.50,y:0.72},{x:0.47,y:0.70},{x:0.46,y:0.63}
+        ];
+
+
+        function translateCoords(lat, lon) {
+            const x = ((lon - geo.minLon) / (geo.maxLon - geo.minLon)) * params.areaSize;
+            const y = (1 - (lat - geo.minLat) / (geo.maxLat - geo.minLat)) * params.areaSize;
+            return { x, y };
+        }
+
+        // --- Classes ---
+        class Entity {
+            constructor(x, y, size, color) { this.x = x; this.y = y; this.size = size; this.color = color; }
+            draw(ctx) {
+                const screenX = (this.x / params.areaSize) * simCanvas.width;
+                const screenY = (this.y / params.areaSize) * simCanvas.height;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.fillRect(screenX - this.size / 2, screenY - this.size / 2, this.size, this.size);
+                ctx.fill();
+            }
+        }
+
+        class Household {
+            constructor(x, y, demographicProfile, initialMonthlyIncome, initialHousingCost) {
+                this.x = x; this.y = y; this.homeX = x; this.homeY = y;
+                this.size = params.household.size;
+                this.isLowIncome = demographicProfile.isLowIncome;
+                this.isLoneParent = demographicProfile.isLoneParent;
+                this.isSenior = demographicProfile.isSenior;
+                this.hasDisability = demographicProfile.hasDisability;
+                this.hasSubsidizedHousing = demographicProfile.hasSubsidizedHousing;
+                this.isSeasonal = demographicProfile.isSeasonal;
+                this.isVulnerable = this.isLowIncome || this.hasDisability || this.isLoneParent || this.isSeasonal;
+                this.housingCost = initialHousingCost;
+                this.monthlyIncome = initialMonthlyIncome;
+                this.hasVehicle = this.isLowIncome ? Math.random() < 0.4 : Math.random() < 0.9;
+                this.isOnUnpavedRoad = Math.random() < params.unpavedRoadRate;
+                let baseSpeed = params.household.speed;
+                if (this.isOnUnpavedRoad) baseSpeed *= 0.6;
+                if (this.hasDisability) baseSpeed *= 0.5;
+                this.speed = this.hasVehicle ? baseSpeed : baseSpeed / 4;
+                this.maxFood = 100;
+                this.shoppingThreshold = this.isLowIncome ? 20 : 40;
+                this.foodLevel = this.maxFood;
+                this.cash = this.monthlyIncome / 2;
+                this.target = null; this.isShopping = false; this.cannotAfford = false;
+                this.lastTripCost = 0;
+            }
+
+            update() {
+                if (simulationDay > 0 && simulationDay % 14 === 0) {
+                    const dayOfYear = simulationDay % 365;
+                    const isHighSeason = dayOfYear >= 120 && dayOfYear <= 300;
+                    let paycheck = this.monthlyIncome / 2;
+                    if (this.isSeasonal) {
+                        let seasonalPay = isHighSeason ? this.monthlyIncome * params.seasonal.highSeasonIncomeMultiplier : params.seasonal.offSeasonIncome;
+                        paycheck = seasonalPay / 2;
+                    }
+                    this.cash += paycheck;
+                    this.cannotAfford = false;
+                }
+                if (simulationDay > 0 && simulationDay % 30 === 0) this.cash -= this.housingCost;
+                this.foodLevel -= params.household.foodConsumption;
+                if (this.foodLevel < 0) this.foodLevel = 0;
+                if (this.foodLevel < this.shoppingThreshold && !this.isShopping && !this.cannotAfford) this.startShopping();
+                if (this.isShopping) this.moveToTarget();
+            }
+
+            applyInflation() {
+                this.monthlyIncome *= (1 + params.wageGrowth);
+                this.housingCost *= (1 + params.inflationRate);
+            }
+
+            getFoodStatus() {
+                if (this.cannotAfford) return 'cannotAfford';
+                if (this.foodLevel > this.maxFood * 0.6) return 'secure';
+                if (this.foodLevel > 10) return 'insecure';
+                return 'severe';
+            }
+
+            getStatusColor() {
+                switch(this.getFoodStatus()) {
+                    case 'secure': return '#22c55e';
+                    case 'insecure': return '#facc15';
+                    case 'severe': return '#ef4444';
+                    case 'cannotAfford': return '#4b5563';
+                    default: return '#000000';
+                }
+            }
+
+            draw(ctx) {
+                const screenX = (this.x / params.areaSize) * simCanvas.width;
+                const screenY = (this.y / params.areaSize) * simCanvas.height;
+                const displaySize = this.size * 1.5;
+                ctx.fillStyle = this.getStatusColor();
+                ctx.beginPath();
+                if (this.isVulnerable) {
+                    ctx.moveTo(screenX, screenY - displaySize);
+                    ctx.lineTo(screenX - displaySize, screenY + displaySize);
+                    ctx.lineTo(screenX + displaySize, screenY + displaySize);
+                    ctx.closePath();
+                } else {
+                    ctx.arc(screenX, screenY, displaySize, 0, Math.PI * 2);
+                }
+                ctx.fill();
+            }
+
+            startShopping() {
+                let bestAffordableTarget = null;
+                let minTotalCost = Infinity;
+
+                foodSources.forEach(source => {
+                    if (!source.isAvailable(simulationDay, this)) return;
+                    const dist = Math.hypot(source.x - this.x, source.y - this.y);
+                    
+                    let transportCost = 0;
+                    if (this.hasVehicle) {
+                        transportCost = dist * params.household.transportCostPerKm;
+                    } else if (transportActive) {
+                        transportCost = dist * params.household.transportCostPerKm * 0.2;
+                    } else {
+                        transportCost = dist * params.household.transportCostPerKm * 3;
+                    }
+                    
+                    const totalCost = source.getCurrentPrice(simulationDay) + transportCost;
+
+                    if (this.cash < totalCost) return;
+                    if (!this.hasVehicle && !transportActive && dist > params.areaSize * 0.15) return;
+
+                    if (totalCost < minTotalCost) {
+                        minTotalCost = totalCost;
+                        bestAffordableTarget = source;
+                    }
+                });
+
+                if (bestAffordableTarget) {
+                    this.isShopping = true;
+                    this.target = bestAffordableTarget;
+                    this.lastTripCost = minTotalCost;
+                } else {
+                    this.cannotAfford = true;
+                }
+            }
+
+            moveToTarget() {
+                if (!this.target) return;
+                const dx = this.target.x - this.x;
+                const dy = this.target.y - this.y;
+                const dist = Math.hypot(dx, dy);
+                
+                const currentSpeed = (transportActive && !this.hasVehicle) ? this.speed * 4 : this.speed;
+
+                if (dist > 1) {
+                    this.x += (dx / dist) * currentSpeed;
+                    this.y += (dy / dist) * currentSpeed;
+                } else {
+                    if (this.target instanceof Entity) {
+                        this.cash -= this.lastTripCost;
+                        this.foodLevel = Math.min(this.maxFood, this.foodLevel + this.target.foodValue);
+                        this.target = { x: this.homeX, y: this.homeY };
+                    } else {
+                        this.isShopping = false; this.target = null;
+                    }
+                }
+            }
+
+            isClicked(clickX, clickY) {
+                const screenX = (this.x / params.areaSize) * simCanvas.width;
+                const screenY = (this.y / params.areaSize) * simCanvas.height;
+                const dist = Math.hypot(clickX - screenX, clickY - screenY);
+                return dist < this.size * 2;
+            }
+        }
+
+        class FoodSource extends Entity {
+            constructor(x, y, size, color, foodValue, price) {
+                super(x, y, size, color);
+                this.foodValue = foodValue;
+                this.basePrice = price;
+                this.price = price;
+            }
+            applyInflation() { this.basePrice *= (1 + params.inflationRate); this.price = this.basePrice; }
+            getCurrentPrice(day) { return this.price; }
+        }
+        class GroceryStore extends FoodSource { constructor(x, y) { super(x, y, params.groceryStore.size, params.groceryStore.color, 100, 60 * params.prices.grocery); } isAvailable(day, household) { return true; } }
+        class ConvenienceStore extends FoodSource {
+             constructor(x, y) { super(x, y, params.convenienceStore.size, params.convenienceStore.color, params.convenienceStore.foodValue, 60 * params.prices.convenience); }
+             isAvailable(day, household) { return true; }
+            getCurrentPrice(day) {
+                const dayOfYear = day % 365;
+                const isHighSeason = dayOfYear >= 120 && dayOfYear <= 300;
+                return isHighSeason ? this.price * params.seasonal.touristMarkup : this.price;
+            }
+        }
+        class FarmersMarket extends FoodSource { constructor(x, y) { super(x, y, params.farmersMarket.size, params.farmersMarket.color, params.farmersMarket.foodValue, 60 * params.prices.market); } isAvailable(day, household) { return day % 7 === 0; } }
+        class FoodBank extends FoodSource { constructor(x, y) { super(x, y, params.foodBank.size, params.foodBank.color, params.foodBank.foodValue, 0); } isAvailable(day, household) { return household.isLowIncome && day % 30 === 15; } applyInflation() { /* No price change */ } }
+
+        function getPointOnRoad() {
+            const randomSegment = roadNetwork[Math.floor(Math.random() * roadNetwork.length)];
+            const t = Math.random();
+            const roadX = randomSegment[0].x + t * (randomSegment[1].x - randomSegment[0].x);
+            const roadY = randomSegment[0].y + t * (randomSegment[1].y - randomSegment[0].y);
+            const offsetX = (Math.random() - 0.5) * 2;
+            const offsetY = (Math.random() - 0.5) * 2;
+            const x = Math.max(0, Math.min(params.areaSize, roadX + offsetX));
+            const y = Math.max(0, Math.min(params.areaSize, roadY + offsetY));
+            return { x, y };
+        }
+
+        function init() {
+            households = []; foodSources = []; simulationDay = 0;
+            const roadPoints = {
+                ceilidhTrail: [geo.locations.portHastings, geo.locations.judique, geo.locations.portHood, geo.locations.mabou, geo.locations.inverness],
+                cabotTrail: [geo.locations.inverness, geo.locations.margareeForks, geo.locations.cheticamp, geo.locations.pleasantBay],
+                hwy105: [geo.locations.portHastings, geo.locations.whycocomagh]
+            };
+            roadNetwork = [];
+            Object.values(roadPoints).forEach(road => {
+                for (let i = 0; i < road.length - 1; i++) {
+                    roadNetwork.push([translateCoords(road[i].lat, road[i].lon), translateCoords(road[i+1].lat, road[i+1].lon)]);
+                }
+            });
+            const groceryLocations = [geo.locations.portHood, geo.locations.mabou, geo.locations.inverness, geo.locations.cheticamp, geo.locations.whycocomagh];
+            groceryLocations.forEach(loc => foodSources.push(new GroceryStore(translateCoords(loc.lat, loc.lon).x, translateCoords(loc.lat, loc.lon).y)));
+            const mabouCoords = translateCoords(geo.locations.mabou.lat, geo.locations.mabou.lon);
+            foodSources.push(new FarmersMarket(mabouCoords.x, mabouCoords.y));
+            for (let i = 0; i < params.convenienceStoreCount; i++) {
+                const {x, y} = getPointOnRoad();
+                foodSources.push(new ConvenienceStore(x, y));
+            }
+            for (let i = 0; i < params.foodBankCount; i++) {
+                const {x, y} = getPointOnRoad();
+                foodSources.push(new FoodBank(x, y));
+            }
+            const householdsToDraw = params.householdCount / 100;
+            for (let i = 0; i < householdsToDraw; i++) {
+                const {x, y} = getPointOnRoad();
+                const isLowIncome = Math.random() < params.povertyRate;
+                const isLoneParent = Math.random() < params.loneParentRate;
+                const demographicProfile = {
+                    isLowIncome: isLowIncome || (isLoneParent && Math.random() < 0.4), isLoneParent,
+                    isSenior: Math.random() < params.seniorRate, hasDisability: Math.random() < params.disabilityRate,
+                    hasSubsidizedHousing: isLowIncome && (Math.random() < params.subsidizedHousingRate),
+                    isSeasonal: Math.random() < params.seasonalWorkerRate,
+                };
+                const income = demographicProfile.isLowIncome ? params.household.monthlyLowIncome : params.household.monthlyIncome;
+                const housingCost = demographicProfile.hasSubsidizedHousing ? params.subsidizedHousingCost : params.averageHousingCost;
+                households.push(new Household(x, y, demographicProfile, income, housingCost));
+            }
+            resizeCanvases();
+            draw(); updateStats();
+        }
+
+        function drawBackgroundMap() {
+            backgroundCtx.clearRect(0, 0, backgroundCanvas.width, backgroundCanvas.height);
+            const w = backgroundCanvas.width; 
+            const h = backgroundCanvas.height;
+
+            backgroundCtx.fillStyle = '#a7d8f0'; 
+            backgroundCtx.fillRect(0, 0, w, h);
+            
+            backgroundCtx.fillStyle = '#f7f4eb';
+            backgroundCtx.beginPath();
+            backgroundCtx.moveTo(invernessCountyOutline[0].x * w, invernessCountyOutline[0].y * h);
+            for (let i = 1; i < invernessCountyOutline.length; i++) {
+                backgroundCtx.lineTo(invernessCountyOutline[i].x * w, invernessCountyOutline[i].y * h);
+            }
+            backgroundCtx.closePath();
+            backgroundCtx.fill();
+
+            backgroundCtx.fillStyle = '#a7d8f0';
+            backgroundCtx.beginPath();
+            backgroundCtx.moveTo(lakeAinslieOutline[0].x * w, lakeAinslieOutline[0].y * h);
+            for (let i = 1; i < lakeAinslieOutline.length; i++) {
+                backgroundCtx.lineTo(lakeAinslieOutline[i].x * w, lakeAinslieOutline[i].y * h);
+            }
+            backgroundCtx.closePath();
+            backgroundCtx.fill();
+
+            backgroundCtx.strokeStyle = '#bdbdbd';
+            backgroundCtx.lineWidth = 3;
+            roadNetwork.forEach(segment => {
+                backgroundCtx.beginPath();
+                backgroundCtx.moveTo((segment[0].x / params.areaSize) * w, (segment[0].y / params.areaSize) * h);
+                backgroundCtx.lineTo((segment[1].x / params.areaSize) * w, (segment[1].y / params.areaSize) * h);
+                backgroundCtx.stroke();
+            });
+
+            if (transportActive) {
+                backgroundCtx.strokeStyle = 'rgba(147, 51, 234, 0.8)';
+                backgroundCtx.lineWidth = 5;
+                backgroundCtx.setLineDash([10, 10]);
+                roadNetwork.forEach(segment => {
+                    backgroundCtx.beginPath();
+                    backgroundCtx.moveTo((segment[0].x / params.areaSize) * w, (segment[0].y / params.areaSize) * h);
+                    backgroundCtx.lineTo((segment[1].x / params.areaSize) * w, (segment[1].y / params.areaSize) * h);
+                    backgroundCtx.stroke();
+                });
+                backgroundCtx.setLineDash([]);
+            }
+
+            backgroundCtx.fillStyle = '#374151';
+            backgroundCtx.font = '12px Inter';
+            Object.entries(geo.locations).forEach(([name, loc]) => {
+                const { x, y } = translateCoords(loc.lat, loc.lon);
+                const screenX = (x / params.areaSize) * w;
+                const screenY = (y / params.areaSize) * h;
+                backgroundCtx.fillText(name.charAt(0).toUpperCase() + name.slice(1).replace(/([A-Z])/g, ' $1').trim(), screenX + 8, screenY + 4);
+            });
+
+            foodSources.forEach(fs => fs.draw(backgroundCtx));
+        }
+
+        function draw() {
+            simCtx.clearRect(0, 0, simCanvas.width, simCanvas.height);
+            households.forEach(h => h.draw(simCtx));
+            if (heatmapToggle.checked) drawHeatmap();
+        }
+
+        function updateHeatmap() {
+            heatmapGrid = Array(HEATMAP_RESOLUTION).fill(0).map(() => Array(HEATMAP_RESOLUTION).fill(0));
+            let maxVal = 0;
+            households.forEach(h => {
+                if (h.getFoodStatus() !== 'secure') {
+                    const gridX = Math.floor((h.x / params.areaSize) * HEATMAP_RESOLUTION);
+                    const gridY = Math.floor((h.y / params.areaSize) * HEATMAP_RESOLUTION);
+                    if (gridX >= 0 && gridX < HEATMAP_RESOLUTION && gridY >= 0 && gridY < HEATMAP_RESOLUTION) {
+                        heatmapGrid[gridY][gridX]++;
+                        if(heatmapGrid[gridY][gridX] > maxVal) maxVal = heatmapGrid[gridY][gridX];
+                    }
+                }
+            });
+            if (maxVal > 0) {
+                for(let y = 0; y < HEATMAP_RESOLUTION; y++) for(let x = 0; x < HEATMAP_RESOLUTION; x++) heatmapGrid[y][x] /= maxVal;
+            }
+        }
+
+        function drawHeatmap() {
+            heatmapCtx.clearRect(0, 0, heatmapCanvas.width, heatmapCanvas.height);
+            const cellWidth = heatmapCanvas.width / HEATMAP_RESOLUTION;
+            const cellHeight = heatmapCanvas.height / HEATMAP_RESOLUTION;
+            for (let y = 0; y < HEATMAP_RESOLUTION; y++) {
+                for (let x = 0; x < HEATMAP_RESOLUTION; x++) {
+                    const alpha = heatmapGrid[y][x];
+                    if (alpha > 0.1) {
+                        const hue = (1 - alpha) * 120; // Red (0) to Green (120)
+                        heatmapCtx.fillStyle = `hsla(${hue}, 100%, 50%, 0.4)`;
+                        heatmapCtx.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+                    }
+                }
+            }
+        }
+
+        function updateStats() {
+            const year = Math.floor(simulationDay / 365) + 1;
+            yearCounter.textContent = year;
+            const dayOfYear = simulationDay % 365;
+            dayCounter.textContent = dayOfYear;
+            const groceryStore = foodSources.find(fs => fs instanceof GroceryStore);
+            groceryCostDisplay.textContent = groceryStore ? groceryStore.getCurrentPrice(simulationDay).toFixed(2) : 'N/A';
+            const isHighSeason = dayOfYear >= 120 && dayOfYear <= 300;
+            seasonDisplay.textContent = isHighSeason ? `High Season` : 'Off-Season';
+            seasonDisplay.className = `text-sm font-medium ${isHighSeason ? 'text-green-600' : 'text-blue-600'}`;
+            const groups = {
+                'All': { total: 0, insecure: 0, cannotAfford: 0 }, 'Low Income': { total: 0, insecure: 0, cannotAfford: 0 },
+                'Seniors': { total: 0, insecure: 0, cannotAfford: 0 }, 'Disabled': { total: 0, insecure: 0, cannotAfford: 0 },
+                'Lone Parent': { total: 0, insecure: 0, cannotAfford: 0 }, 'Seasonal': { total: 0, insecure: 0, cannotAfford: 0 },
+            };
+            households.forEach(h => {
+                const status = h.getFoodStatus();
+                const isInsecure = status === 'insecure' || status === 'severe' || status === 'cannotAfford';
+                function tally(groupName, household) {
+                    groups[groupName].total += household.size;
+                    if (isInsecure) groups[groupName].insecure += household.size;
+                    if (status === 'cannotAfford') groups[groupName].cannotAfford += household.size;
+                }
+                tally('All', h);
+                if (h.isLowIncome) tally('Low Income', h);
+                if (h.isSenior) tally('Seniors', h);
+                if (h.hasDisability) tally('Disabled', h);
+                if (h.isLoneParent) tally('Lone Parent', h);
+                if (h.isSeasonal) tally('Seasonal', h);
+            });
+            statsContainer.innerHTML = Object.entries(groups).map(([name, data]) => {
+                if (data.total < 1) return '';
+                const insecurePercent = ((data.insecure / data.total) * 100).toFixed(1);
+                const cannotAffordPercent = ((data.cannotAfford / data.total) * 100).toFixed(1);
+                return `<div><span class="font-semibold">${name}:</span> ${insecurePercent}% insecure (${cannotAffordPercent}% can't afford)</div>`;
+            }).join('');
+        }
+
+        function applyAnnualInflation() {
+            households.forEach(h => h.applyInflation());
+            foodSources.forEach(fs => fs.applyInflation());
+        }
+
+        function gameLoop() {
+            if (!simulationRunning) return;
+            simulationDay++;
+            if (simulationDay > 0 && simulationDay % 365 === 0) {
+                applyAnnualInflation();
+                if (ubiActive) {
+                    households.forEach(h => h.cash += 500);
+                }
+            }
+            households.forEach(h => h.update());
+            if (simulationDay % 10 === 0 && heatmapToggle.checked) updateHeatmap();
+            draw();
+            updateStats();
+            timeoutId = setTimeout(gameLoop, simulationSpeed);
+        }
+
+        // --- Event Listeners ---
+        startBtn.addEventListener('click', () => {
+            if (!simulationRunning) {
+                simulationRunning = true; gameLoop();
+                startBtn.disabled = true; pauseBtn.disabled = false;
+                [seasonalWorkerRateSlider, povertyRateSlider, housingCostSlider, inflationRateSlider, transportCostSlider].forEach(s => s.disabled = true);
+            }
+        });
+        pauseBtn.addEventListener('click', () => {
+            simulationRunning = false; clearTimeout(timeoutId);
+            startBtn.disabled = false; pauseBtn.disabled = true;
+        });
+        resetBtn.addEventListener('click', () => {
+            simulationRunning = false; clearTimeout(timeoutId);
+            startBtn.disabled = false; pauseBtn.disabled = true;
+            [seasonalWorkerRateSlider, povertyRateSlider, housingCostSlider, inflationRateSlider, transportCostSlider].forEach(s => s.disabled = false);
+            
+            // Reset scenarios
+            ubiActive = false;
+            ubiBtn.textContent = 'Scenario 1: UBI ($500/yr)';
+            ubiBtn.classList.remove('bg-green-600');
+            ubiBtn.classList.add('bg-blue-500');
+
+            transportActive = false;
+            transportBtn.textContent = 'Scenario 3: Add Transport';
+            transportBtn.classList.remove('bg-green-600');
+            transportBtn.classList.add('bg-purple-500');
+
+            if (addedFoodBank) {
+                foodSources = foodSources.filter(fs => fs !== addedFoodBank);
+                addedFoodBank = null;
+            }
+            addFoodBankBtn.textContent = 'Scenario 2: Add Food Bank';
+            addFoodBankBtn.classList.remove('bg-green-600');
+            addFoodBankBtn.classList.add('bg-orange-500');
+
+            init();
+        });
+
+        // Scenario Listeners
+        ubiBtn.addEventListener('click', () => {
+            ubiActive = !ubiActive;
+            ubiBtn.textContent = ubiActive ? 'UBI Active' : 'Scenario 1: UBI ($500/yr)';
+            ubiBtn.classList.toggle('bg-blue-500');
+            ubiBtn.classList.toggle('bg-green-600');
+        });
+
+        addFoodBankBtn.addEventListener('click', () => {
+            if (addedFoodBank) {
+                // Remove the food bank
+                foodSources = foodSources.filter(fs => fs !== addedFoodBank);
+                addedFoodBank = null;
+                addFoodBankBtn.textContent = 'Scenario 2: Add Food Bank';
+                addFoodBankBtn.classList.remove('bg-green-600');
+                addFoodBankBtn.classList.add('bg-orange-500');
+            } else {
+                // Add a new food bank
+                const {x, y} = getPointOnRoad();
+                addedFoodBank = new FoodBank(x, y);
+                foodSources.push(addedFoodBank);
+                addFoodBankBtn.textContent = 'Food Bank Added';
+                addFoodBankBtn.classList.remove('bg-orange-500');
+                addFoodBankBtn.classList.add('bg-green-600');
+            }
+            drawBackgroundMap();
+        });
+
+        transportBtn.addEventListener('click', () => {
+            transportActive = !transportActive;
+            transportBtn.textContent = transportActive ? 'Transport Active' : 'Scenario 3: Add Transport';
+            transportBtn.classList.toggle('bg-purple-500');
+            transportBtn.classList.toggle('bg-green-600');
+            drawBackgroundMap();
+        });
+
+        speedSlider.addEventListener('input', (e) => {
+            simulationSpeed = 510 - (parseInt(e.target.value) * 5);
+            speedValue.textContent = e.target.value;
+        });
+        [transportCostSlider, seasonalWorkerRateSlider, povertyRateSlider, housingCostSlider, inflationRateSlider].forEach(slider => {
+            slider.addEventListener('input', (e) => {
+                const id = e.target.id;
+                const value = e.target.value;
+                if (id === 'transportCost') { params.household.transportCostPerKm = parseFloat(value); transportCostValue.textContent = parseFloat(value).toFixed(2); }
+                if (id === 'seasonalWorkerRate') { params.seasonalWorkerRate = parseInt(value) / 100; seasonalWorkerRateValue.textContent = value; }
+                if (id === 'povertyRate') { params.povertyRate = parseInt(value) / 100; povertyRateValue.textContent = value; }
+                if (id === 'housingCost') { params.averageHousingCost = parseInt(value); housingCostValue.textContent = value; }
+                if (id === 'inflationRate') { params.inflationRate = parseInt(value) / 100; params.wageGrowth = params.inflationRate * 0.8; inflationRateValue.textContent = value; }
+                if (!simulationRunning) init();
+            });
+        });
+        heatmapToggle.addEventListener('change', () => {
+            if (heatmapToggle.checked) updateHeatmap();
+            else heatmapCtx.clearRect(0, 0, heatmapCanvas.width, heatmapCanvas.height);
+            draw();
+        });
+        simCanvas.addEventListener('click', (event) => {
+            const rect = simCanvas.getBoundingClientRect();
+            const clickX = event.clientX - rect.left;
+            const clickY = event.clientY - rect.top;
+            const clickedHousehold = households.slice().reverse().find(h => h.isClicked(clickX, clickY));
+            if (clickedHousehold) {
+                const h = clickedHousehold;
+                modalBody.innerHTML = `
+                    <p><strong>Status:</strong> <span style="font-weight:bold; color:${h.getStatusColor()};">${h.getFoodStatus().charAt(0).toUpperCase() + h.getFoodStatus().slice(1)}</span></p>
+                    <p><strong>Food Level:</strong> ${h.foodLevel.toFixed(1)} / 100 | <strong>Cash:</strong> $${h.cash.toFixed(2)}</p>
+                    <hr class="my-2">
+                    <p><strong>Demographics:</strong></p>
+                    <ul class="list-disc list-inside text-sm">
+                      ${h.isLowIncome ? '<li>Low Income</li>' : ''} ${h.isSenior ? '<li>Senior Household</li>' : ''}
+                      ${h.isLoneParent ? '<li>Lone Parent</li>' : ''} ${h.hasDisability ? '<li>Has Disability</li>' : ''}
+                      ${h.isSeasonal ? '<li>Seasonal Worker</li>' : ''}
+                    </ul>
+                    <p><strong>Challenges:</strong></p>
+                    <ul class="list-disc list-inside text-sm">
+                      ${!h.hasVehicle ? '<li>No Vehicle</li>' : ''} ${h.isOnUnpavedRoad ? '<li>Lives on Unpaved Road</li>' : ''}
+                      ${!h.hasSubsidizedHousing ? `<li>High Housing Cost ($${h.housingCost.toFixed(2)})</li>` : `<li>Subsidized Housing ($${h.housingCost.toFixed(2)})</li>`}
+                    </ul>`;
+                modal.style.display = "block";
+            }
+        });
+        closeModal.onclick = () => { modal.style.display = "none"; }
+        window.onclick = (event) => { if (event.target == modal) { modal.style.display = "none"; } }
+
+        init();
+    </script>
+</body>
+</html>
